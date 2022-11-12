@@ -1,72 +1,85 @@
-(() => {
-  let youtubeLeftControls, youtubePlayer;
-  let currentVideo = "";
-  let currentVideoBookmarks = [];
+(
+  () => {
+    let currentVideo = "";
+    let currentVideoNumber = 0;
+    let playButton = document.querySelector(".ytp-play-button");
+    let video = document.querySelector("video");
 
-  const fetchBookmarks = () => {
-    return new Promise((resolve) => {
-      chrome.storage.sync.get([currentVideo], (obj) => {
-        resolve(obj[currentVideo] ? JSON.parse(obj[currentVideo]) : []);
+
+
+
+    if (!video) {
+      video = document.querySelector("video");
+    }
+
+
+
+
+    function closeLastTab() {
+      chrome.runtime.sendMessage({
+          msg: "tab_close_msg"
+        },
+        function (response) {
+          console.log("response from the bg", response)
+        }
+      );
+    }
+    const fetchVideosPlayed = () => {
+      return new Promise((resolve) => {
+        chrome.storage.sync.get([currentVideo], (obj) => {
+          console.log("obj", obj);
+          resolve(obj[currentVideo] ? obj[currentVideo] : 0);
+        });
       });
-    });
-  };
-
-  const addNewBookmarkEventHandler = async () => {
-    const currentTime = youtubePlayer.currentTime;
-    const newBookmark = {
-      time: currentTime,
-      desc: "Bookmark at " + getTime(currentTime),
     };
+    const addNewVideoEventHandler = async () => {
 
-    currentVideoBookmarks = await fetchBookmarks();
 
-    chrome.storage.sync.set({
-      [currentVideo]: JSON.stringify([...currentVideoBookmarks, newBookmark].sort((a, b) => a.time - b.time))
-    });
-  };
+      currentVideoNumber = await fetchVideosPlayed();
+      currentVideoNumber++;
+      if (currentVideoNumber > 6) {
+        chrome.storage.sync.set({
+          [currentVideo]: 0
+        });
+      } else {
+        chrome.storage.sync.set({
+          [currentVideo]: currentVideoNumber
+        });
+      }
+    };
+    addNewVideoEventHandler()
 
-  const newVideoLoaded = async () => {
-    const bookmarkBtnExists = document.getElementsByClassName("bookmark-btn")[0];
 
-    currentVideoBookmarks = await fetchBookmarks();
 
-    if (!bookmarkBtnExists) {
-      const bookmarkBtn = document.createElement("img");
 
-      bookmarkBtn.src = chrome.runtime.getURL("assets/bookmark.png");
-      bookmarkBtn.className = "ytp-button " + "bookmark-btn";
-      bookmarkBtn.title = "Click to bookmark current timestamp";
 
-      youtubeLeftControls = document.getElementsByClassName("ytp-left-controls")[0];
-      youtubePlayer = document.getElementsByClassName('video-stream')[0];
 
-      youtubeLeftControls.appendChild(bookmarkBtn);
-      bookmarkBtn.addEventListener("click", addNewBookmarkEventHandler);
-    }
-  };
+    setInterval(() => {
+      video = document.querySelector("video");
+      playButton = document.querySelector(".ytp-play-button");
+      console.log("video", video.autoplay);
+      if (video.ended) {
+        if (currentVideoNumber > 5) {
+          closeLastTab();
+        } else {
+          window.open(location.href, "_self", "");
+          addNewVideoEventHandler()
+        }
 
-  chrome.runtime.onMessage.addListener((obj, sender, response) => {
-    const { type, value, videoId } = obj;
+      }
 
-    if (type === "NEW") {
-      currentVideo = videoId;
-      newVideoLoaded();
-    } else if (type === "PLAY") {
-      youtubePlayer.currentTime = value;
-    } else if ( type === "DELETE") {
-      currentVideoBookmarks = currentVideoBookmarks.filter((b) => b.time != value);
-      chrome.storage.sync.set({ [currentVideo]: JSON.stringify(currentVideoBookmarks) });
+    }, 500);
 
-      response(currentVideoBookmarks);
-    }
-  });
 
-  newVideoLoaded();
-})();
 
-const getTime = t => {
-  var date = new Date(0);
-  date.setSeconds(t);
 
-  return date.toISOString().substr(11, 8);
-};
+
+    //every 5 seconds check if the video is paused
+    setInterval(() => {
+      console.log("checking if video is paused", video.ended);
+      if (video.paused && playButton) {
+        playButton.click();
+      }
+    }, 5000);
+
+  })();
